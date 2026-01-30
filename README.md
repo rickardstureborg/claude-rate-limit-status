@@ -1,6 +1,7 @@
 # Claude Code Rate Limit Status
 
 Display your Claude Code rate limits in the status line.
+In contrast to some other workarounds, we use claude's built in `/usage` command, rather than a minimal 1 max_token API call. This saves you hundredths of cents every time it runs, but still took me an hour to implement!
 
 ![Example](https://img.shields.io/badge/session-3%25-gray) ![Example](https://img.shields.io/badge/week-12%25-yellow) ![Example](https://img.shields.io/badge/sonnet-0%25-gray)
 
@@ -39,7 +40,7 @@ EOF
 
 ## How it works
 
-Usage data is fetched every 5 minutes (at :00, :05, :10, etc.) to avoid slowing down the status line. The fetch runs in the background and caches results to `/tmp/claude-usage-cache.json`.
+Usage data is fetched every 5 minutes (at :00, :05, :10, etc.) to avoid slowing down the status line. We spawn a claude session and run `/usage` manually, which because of network handshakes can take ~20seconds. We cache results in `/tmp/claude-usage-cache.json`.
 
 For technical implementation details, see [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
