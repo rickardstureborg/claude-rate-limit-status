@@ -3,7 +3,7 @@
 Display your Claude Code rate limits in the status line.
 In contrast to some other workarounds, we use claude's built in `/usage` command, rather than a minimal 1 max_token API call. This saves you hundredths of cents every time it runs, but still took me an hour to implement!
 
-![Example](https://img.shields.io/badge/session-3%25-gray) ![Example](https://img.shields.io/badge/week-12%25-yellow) ![Example](https://img.shields.io/badge/sonnet-0%25-gray)
+![alt text](example_screenshot.png)
 
 ## What it shows
 
@@ -22,7 +22,7 @@ Colors change based on usage: gray → yellow (50%) → red (75%)
 
 ```bash
 # Clone to your .claude directory
-git clone https://github.com/acrebase/claude-rate-limit-status ~/.claude/rate-limit-status
+git clone https://github.com/rickardstureborg/claude-rate-limit-status ~/.claude/rate-limit-status
 
 # Make scripts executable
 chmod +x ~/.claude/rate-limit-status/*.sh ~/.claude/rate-limit-status/*.exp
