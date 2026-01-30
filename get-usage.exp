@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+# Spawns claude, runs /usage, captures output. Panel takes ~2s to load.
+log_file -noappend /tmp/claude-usage-log.txt
+log_user 1
+set timeout 20
+
+spawn claude
+
+expect {
+    -re {\[0%\]} { sleep 1 }
+    timeout { exit 1 }
+}
+
+send "/usage"
+sleep 0.5
+send "\t"
+sleep 0.5
+send "\r"
+
+sleep 4
+
+send "\033"
+sleep 0.5
+send "/exit"
+sleep 0.3
+send "\t"
+sleep 0.3
+send "\r"
+
+expect eof
