@@ -1,27 +1,42 @@
 #!/bin/bash
-# Claude Code status line with rate limit display
+# Claude Code status line — af-magic zsh theme style
+# Receives JSON on stdin from Claude Code with model info, context %, tokens, etc.
 
 INPUT=$(cat)
 
-MODEL_NAME=$(echo "$INPUT" | grep -o '"display_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*:.*"\([^"]*\)"/\1/')
-[ -z "$MODEL_NAME" ] && MODEL_NAME="Unknown"
+# Log the raw stdin JSON once for field discovery, then periodically
+STDIN_LOG="/tmp/claude-statusline-stdin.json"
+echo "$INPUT" > "$STDIN_LOG"
 
-CONTEXT_PCT=$(echo "$INPUT" | grep -o '"used_percentage"[[:space:]]*:[[:space:]]*[0-9.]*' | head -1 | sed 's/.*:[[:space:]]*//' | cut -d'.' -f1)
+# --- Parse stdin fields ---
+json_string() { echo "$INPUT" | grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*:[[:space:]]*"\([^"]*\)"/\1/'; }
+json_number() { echo "$INPUT" | grep -o "\"$1\"[[:space:]]*:[[:space:]]*[0-9.]*" | head -1 | sed 's/.*:[[:space:]]*//' | cut -d'.' -f1; }
+
+MODEL_NAME=$(json_string "display_name")
+CONTEXT_PCT=$(json_number "used_percentage")
+INPUT_TOKENS=$(json_number "input_tokens")
+OUTPUT_TOKENS=$(json_number "output_tokens")
+CACHE_READ=$(json_number "cache_read_input_tokens")
+CACHE_CREATE=$(json_number "cache_creation_input_tokens")
+
+[ -z "$MODEL_NAME" ] && MODEL_NAME="Unknown"
 [ -z "$CONTEXT_PCT" ] && CONTEXT_PCT=0
 
+# --- Colors ---
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 RED='\033[0;31m'
 DIM='\033[2m'
+MAGENTA='\033[0;35m'
 RESET='\033[0m'
 
-# Usage limits: fetched via expect script that spawns claude and runs /usage
-# Takes ~25s so we cache and only refresh every 5 min (on :00, :05, :10, etc.)
+# --- Usage limits (cached, fetched every 5 min) ---
 USAGE_CACHE="/tmp/claude-usage-cache.json"
 USAGE_LOCK="/tmp/claude-usage-fetch.lock"
 SCRIPT_DIR="$(dirname "$0")"
 
+# Trigger fetch on 5-minute boundaries
 MIN=$(date +%M | sed 's/^0//')
 [ -z "$MIN" ] && MIN=0
 
@@ -33,17 +48,49 @@ if [ $((MIN % 5)) -eq 0 ]; then
     fi
 fi
 
+# Read cached usage data
+SESSION_PCT=""
+WEEKLY_PCT=""
+SONNET_PCT=""
+SESSION_RESET=""
+FETCH_TIME=""
+CACHE_STALE=0
+
 if [ -f "$USAGE_CACHE" ]; then
     CACHE=$(cat "$USAGE_CACHE")
-    SESSION_PCT=$(echo "$CACHE" | grep -o '"session_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
-    WEEKLY_PCT=$(echo "$CACHE" | grep -o '"weekly_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
-    SONNET_PCT=$(echo "$CACHE" | grep -o '"sonnet_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
-    SESSION_RESET=$(echo "$CACHE" | grep -o '"session_reset"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:.*"\([^"]*\)"/\1/')
+    # Only parse if it looks like valid data (not an error)
+    if echo "$CACHE" | grep -q '"session_pct"'; then
+        SESSION_PCT=$(echo "$CACHE" | grep -o '"session_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
+        WEEKLY_PCT=$(echo "$CACHE" | grep -o '"weekly_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
+        SONNET_PCT=$(echo "$CACHE" | grep -o '"sonnet_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
+        SESSION_RESET=$(echo "$CACHE" | grep -o '"session_reset"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:.*"\([^"]*\)"/\1/')
+        FETCH_TIME=$(echo "$CACHE" | grep -o '"fetch_time"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
+    fi
 fi
 
+# Compute cache age string
+CACHE_AGE=""
+if [ -n "$FETCH_TIME" ] && [ "$FETCH_TIME" -gt 0 ] 2>/dev/null; then
+    NOW=$(date +%s)
+    AGE_SEC=$((NOW - FETCH_TIME))
+    if [ "$AGE_SEC" -lt 60 ]; then
+        CACHE_AGE="<1m"
+    elif [ "$AGE_SEC" -lt 3600 ]; then
+        CACHE_AGE="$((AGE_SEC / 60))m"
+    else
+        CACHE_AGE="$((AGE_SEC / 3600))h"
+    fi
+    # Mark stale if older than 10 minutes
+    [ "$AGE_SEC" -gt 600 ] && CACHE_STALE=1
+fi
+
+# --- Build segments ---
+
+# Directory with ~ substitution
 DIR="${PWD/#$HOME/~}"
 DIR_OUT="${CYAN}${DIR}${RESET}"
 
+# Git branch + dirty indicator
 GIT_BRANCH=""
 if git rev-parse --git-dir &>/dev/null; then
     BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)
@@ -56,10 +103,13 @@ if git rev-parse --git-dir &>/dev/null; then
     fi
 fi
 
+# User@host
 USER_HOST="${DIM}${USER}@$(hostname -s)${RESET}"
 
+# Model
 MODEL_OUT="[${MODEL_NAME}]"
 
+# Context % with color thresholds
 if [ "$CONTEXT_PCT" -lt 50 ]; then
     CTX_COLOR=$GREEN
 elif [ "$CONTEXT_PCT" -lt 75 ]; then
@@ -69,25 +119,38 @@ else
 fi
 CTX_OUT="${CTX_COLOR}[${CONTEXT_PCT}%]${RESET}"
 
-# Usage color: gray < 50%, yellow 50-74%, red >= 75%
+# Usage color: dim < 50, yellow 50-74, red >= 75
 usage_color() {
-    local pct=$1
-    [ -z "$pct" ] && pct=0
+    local pct=${1:-0}
     if [ "$pct" -lt 50 ]; then echo "$DIM"
     elif [ "$pct" -lt 75 ]; then echo "$YELLOW"
     else echo "$RED"
     fi
 }
 
+# Usage limits segment with cache age and staleness
 USAGE_OUT=""
 if [ -n "$SESSION_PCT" ]; then
     S_COLOR=$(usage_color "$SESSION_PCT")
     W_COLOR=$(usage_color "$WEEKLY_PCT")
     SON_COLOR=$(usage_color "$SONNET_PCT")
 
-    USAGE_OUT=" ${S_COLOR}session: ${SESSION_PCT}%${RESET}"
+    # If data is stale, wrap in dim to signal it's old
+    STALE_PRE=""
+    STALE_POST=""
+    if [ "$CACHE_STALE" -eq 1 ]; then
+        STALE_PRE="${DIM}"
+        STALE_POST="${RESET}"
+    fi
+
+    USAGE_OUT=" ${STALE_PRE}${S_COLOR}session: ${SESSION_PCT}%${RESET}"
     [ -n "$SESSION_RESET" ] && [ "$SESSION_RESET" != "unknown" ] && USAGE_OUT+=" ${DIM}(resets ${SESSION_RESET})${RESET}"
-    USAGE_OUT+=" ${W_COLOR}week: ${WEEKLY_PCT}%${RESET} ${SON_COLOR}sonnet: ${SONNET_PCT}%${RESET}"
+    USAGE_OUT+=" ${STALE_PRE}${W_COLOR}week: ${WEEKLY_PCT}%${RESET} ${STALE_PRE}${SON_COLOR}sonnet: ${SONNET_PCT}%${RESET}${STALE_POST}"
+
+    # Cache age indicator
+    if [ -n "$CACHE_AGE" ]; then
+        USAGE_OUT+=" ${DIM}${CACHE_AGE} ago${RESET}"
+    fi
 fi
 
 echo -e "${DIR_OUT}${GIT_BRANCH} ${USER_HOST} ${MODEL_OUT} ${CTX_OUT}${USAGE_OUT}"

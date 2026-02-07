@@ -4,13 +4,19 @@
 set -e
 
 INSTALL_DIR="$HOME/.claude/rate-limit-status"
+COMMANDS_DIR="$HOME/.claude/commands"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 
 echo "Installing to $INSTALL_DIR..."
 
 mkdir -p "$INSTALL_DIR"
-cp statusline.sh get-usage.sh get-usage.exp "$INSTALL_DIR/"
+cp statusline.sh get-usage.sh get-usage.exp generate-dashboard.sh "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR"/*.sh "$INSTALL_DIR"/*.exp
+
+# Install slash command
+mkdir -p "$COMMANDS_DIR"
+cp commands/usage-tracking.md "$COMMANDS_DIR/"
+echo "Installed /usage-tracking slash command"
 
 echo "Configuring Claude Code settings..."
 
@@ -41,3 +47,4 @@ EOF
 fi
 
 echo "Done! Restart Claude Code to see the new status line."
+echo "Use /usage-tracking in Claude Code to generate and open the usage dashboard."
