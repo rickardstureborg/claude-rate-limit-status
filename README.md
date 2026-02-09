@@ -4,14 +4,13 @@ Display your Claude Code rate limits in the status line, with historical usage t
 
 In contrast to some other workarounds, we use claude's built in `/usage` command, rather than a minimal 1 max_token API call. This saves you hundredths of cents every time it runs, but still took me an hour to implement!
 
-![alt text](example_screenshot.png)
+![alt text](example-statusline.png)
 
 ## What it shows
 
 **Status line:**
 - **Session limit** (5-hour rolling window) with reset time
 - **Weekly limit** (all models)
-- **Sonnet-only weekly limit**
 - **Cache age** — how fresh the usage data is
 - **Staleness indicator** — dims values when data is >10 minutes old
 
@@ -72,5 +71,5 @@ Run `/usage-tracking` in Claude Code to generate and open an HTML dashboard show
 ## Example output
 
 ```
-~/projects/myapp (main) user@host [Opus 4.6] [12%] session: 3% (resets 5pm) week: 12% sonnet: 0% 2m ago
+~/projects/myapp (main) user@host [Opus 4.6] [12%] [sesh: 3% (ends 5pm) week: 12% - 2m ago]
 ```
