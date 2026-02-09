@@ -86,12 +86,6 @@ cat << 'PART1'
   td { padding: 6px 8px; border-bottom: 1px solid var(--surface2); }
   .chart-box { width: 100%; height: 220px; position: relative; margin-top: 8px; }
   canvas { width: 100% !important; height: 100% !important; }
-  .refresh-btn {
-    position: fixed; top: 24px; right: 24px;
-    background: var(--surface); color: var(--cyan); border: 1px solid var(--cyan);
-    border-radius: 6px; padding: 8px 16px; font-family: inherit; font-size: 0.85em; cursor: pointer;
-  }
-  .refresh-btn:hover { background: var(--surface2); }
   .info-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 8px; }
   .info-row span { font-size: 0.85em; }
   .info-row .lbl { color: var(--text-dim); }
@@ -103,12 +97,26 @@ cat << 'PART1'
   }
   .range-sel button:hover { color: var(--text); }
   .range-sel button.on { background: var(--surface2); color: var(--cyan); font-weight: bold; }
+  .chart-tooltip {
+    position: absolute;
+    background: var(--surface2);
+    border: 1px solid #3b4261;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.8em;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 10;
+    display: none;
+  }
+  .chart-tooltip .tt-time { color: var(--text-dim); margin-bottom: 4px; }
+  .chart-tooltip .tt-row { display: flex; align-items: center; gap: 6px; line-height: 1.6; }
+  .chart-tooltip .tt-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 </style>
 </head>
 <body>
 <h1>Claude Code Usage Tracking</h1>
 <div class="subtitle">Dashboard generated <span id="gen-time"></span></div>
-<button class="refresh-btn" onclick="location.reload()" title="Reload page — re-run /usage-tracking to regenerate with fresh data">Refresh</button>
 
 <div class="grid">
   <div class="card">
@@ -235,7 +243,8 @@ if (sessionInfo && sessionInfo.model) {
 }
 
 // Chart
-function drawChart() {
+var chartState = null;
+function drawChart(hoverTime) {
   var canvas = document.getElementById('chart');
   if (!canvas || !trackingData.length) {
     var c = canvas?canvas.parentElement:null;
@@ -248,7 +257,7 @@ function drawChart() {
   canvas.width = rect.width*dpr; canvas.height = rect.height*dpr;
   cx.scale(dpr,dpr);
   var W = rect.width, H = rect.height;
-  var pad = {t:24,r:20,b:40,l:45};
+  var pad = {t:40,r:20,b:40,l:45};
   var pW = W-pad.l-pad.r, pH = H-pad.t-pad.b;
 
   var allPts = trackingData.map(function(d){
@@ -287,13 +296,13 @@ function drawChart() {
     // Session reset: only when session_pct actually drops (not string comparison —
     // the reset time string varies in format e.g. "1:59pm" vs "2pm" for the same window)
     if(pts[i].s < pts[i-1].s - 2){
-      var rx = xp((pts[i-1].t + pts[i].t) / 2);
+      var rx = xp(pts[i].t + 5 * 60000);
       cx.strokeStyle='#7dcfff';
       cx.beginPath();cx.moveTo(rx, pad.t);cx.lineTo(rx, pad.t+pH);cx.stroke();
     }
     // Weekly reset: weekly_pct drops
     if(pts[i].w < pts[i-1].w - 2){
-      var rx = xp((pts[i-1].t + pts[i].t) / 2);
+      var rx = xp(pts[i].t + 5 * 60000);
       cx.strokeStyle='#e0af68';
       cx.beginPath();cx.moveTo(rx, pad.t);cx.lineTo(rx, pad.t+pH);cx.stroke();
     }
@@ -315,7 +324,11 @@ function drawChart() {
     cx.strokeStyle=color;cx.lineWidth=2;cx.beginPath();
     pts.forEach(function(p,i){
       var px=xp(p.t),py=yp(p[key]);
-      i===0?cx.moveTo(px,py):cx.lineTo(px,py);
+      if(i===0){cx.moveTo(px,py);}
+      else if(p[key] < pts[i-1][key] - 2){
+        cx.lineTo(px,yp(pts[i-1][key]));
+        cx.lineTo(px,py);
+      } else {cx.lineTo(px,py);}
     });
     cx.stroke();
     cx.fillStyle=color;
@@ -327,20 +340,85 @@ function drawChart() {
   drawLine('w','#e0af68');
   drawLine('sn','#bb9af7');
 
-  // Legend (include reset indicator)
-  cx.font='11px monospace';
-  [['session','#7dcfff',0],['weekly','#e0af68',90],['sonnet','#bb9af7',170]].forEach(function(a){
-    cx.fillStyle=a[1];cx.fillRect(pad.l+a[2],pad.t-12,12,3);
-    cx.fillText(a[0],pad.l+a[2]+16,pad.t-4);
+  // Legend
+  cx.font='11px monospace'; cx.textBaseline='middle';
+  var ly=pad.t-20, lx=pad.l;
+  [['session','#7dcfff'],['weekly','#e0af68'],['sonnet','#bb9af7']].forEach(function(a){
+    cx.strokeStyle=a[1];cx.lineWidth=2;cx.setLineDash([]);
+    cx.beginPath();cx.moveTo(lx,ly);cx.lineTo(lx+16,ly);cx.stroke();
+    cx.fillStyle=a[1];cx.beginPath();cx.arc(lx+8,ly,3,0,Math.PI*2);cx.fill();
+    cx.fillStyle=a[1];cx.textAlign='left';cx.fillText(a[0],lx+22,ly);
+    lx+=cx.measureText(a[0]).width+42;
   });
-  // Dashed line legend
   cx.setLineDash([4,3]);cx.lineWidth=1;cx.strokeStyle='#565f89';
-  cx.beginPath();cx.moveTo(pad.l+250,pad.t-10);cx.lineTo(pad.l+262,pad.t-10);cx.stroke();
+  cx.beginPath();cx.moveTo(lx,ly);cx.lineTo(lx+16,ly);cx.stroke();
   cx.setLineDash([]);
-  cx.fillStyle='#565f89';cx.fillText('reset',pad.l+278,pad.t-4);
+  cx.fillStyle='#565f89';cx.textAlign='left';cx.fillText('reset',lx+22,ly);
+  cx.textBaseline='alphabetic';
+
+  // Hover crosshair + highlighted dots
+  if (hoverTime != null) {
+    var nearest = null, minDist = Infinity;
+    pts.forEach(function(p) {
+      var dist = Math.abs(p.t - hoverTime);
+      if (dist < minDist) { minDist = dist; nearest = p; }
+    });
+    if (nearest) {
+      var hx = xp(nearest.t);
+      cx.strokeStyle = '#565f89'; cx.lineWidth = 1; cx.setLineDash([3,3]);
+      cx.beginPath(); cx.moveTo(hx, pad.t); cx.lineTo(hx, pad.t+pH); cx.stroke();
+      cx.setLineDash([]);
+      [['s','#7dcfff'],['w','#e0af68'],['sn','#bb9af7']].forEach(function(a) {
+        cx.fillStyle = a[1];
+        cx.beginPath(); cx.arc(xp(nearest.t), yp(nearest[a[0]]), 5, 0, Math.PI*2); cx.fill();
+      });
+    }
+  }
+  chartState = { pts: pts, xp: xp, yp: yp, pad: pad, W: W, H: H, pW: pW, pH: pH };
 }
 drawChart();
-window.addEventListener('resize',drawChart);
+window.addEventListener('resize',function(){ drawChart(); });
+
+// Tooltip for chart hover
+var chartTooltip = document.createElement('div');
+chartTooltip.className = 'chart-tooltip';
+document.getElementById('chart').parentElement.appendChild(chartTooltip);
+
+document.getElementById('chart').addEventListener('mousemove', function(e) {
+  if (!chartState) return;
+  var rect = e.target.getBoundingClientRect();
+  var mx = e.clientX - rect.left;
+  var nearest = null, minDist = Infinity;
+  chartState.pts.forEach(function(p) {
+    var dist = Math.abs(chartState.xp(p.t) - mx);
+    if (dist < minDist) { minDist = dist; nearest = p; }
+  });
+  if (!nearest || minDist > 30) {
+    chartTooltip.style.display = 'none';
+    drawChart();
+    return;
+  }
+  drawChart(nearest.t);
+  var d = new Date(nearest.t);
+  var timeStr = (d.getMonth()+1)+'/'+d.getDate()+' '+
+    ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  chartTooltip.innerHTML = '<div class="tt-time">'+timeStr+'</div>' +
+    '<div class="tt-row"><span class="tt-dot" style="background:#7dcfff"></span>Session: '+nearest.s+'%</div>' +
+    '<div class="tt-row"><span class="tt-dot" style="background:#e0af68"></span>Weekly: '+nearest.w+'%</div>' +
+    '<div class="tt-row"><span class="tt-dot" style="background:#bb9af7"></span>Sonnet: '+nearest.sn+'%</div>';
+  chartTooltip.style.display = 'block';
+  var tx = chartState.xp(nearest.t) + 12;
+  var ty = e.clientY - rect.top - 40;
+  if (tx + chartTooltip.offsetWidth > chartState.W) tx = chartState.xp(nearest.t) - chartTooltip.offsetWidth - 12;
+  if (ty < 0) ty = 0;
+  chartTooltip.style.left = tx + 'px';
+  chartTooltip.style.top = ty + 'px';
+});
+document.getElementById('chart').addEventListener('mouseleave', function() {
+  chartTooltip.style.display = 'none';
+  drawChart();
+});
+
 document.querySelectorAll('#range-sel button').forEach(function(btn){
   btn.addEventListener('click', function(){
     document.querySelector('#range-sel .on').classList.remove('on');
