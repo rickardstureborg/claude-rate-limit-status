@@ -51,7 +51,6 @@ fi
 # Read cached usage data
 SESSION_PCT=""
 WEEKLY_PCT=""
-SONNET_PCT=""
 SESSION_RESET=""
 FETCH_TIME=""
 CACHE_STALE=0
@@ -62,7 +61,6 @@ if [ -f "$USAGE_CACHE" ]; then
     if echo "$CACHE" | grep -q '"session_pct"'; then
         SESSION_PCT=$(echo "$CACHE" | grep -o '"session_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
         WEEKLY_PCT=$(echo "$CACHE" | grep -o '"weekly_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
-        SONNET_PCT=$(echo "$CACHE" | grep -o '"sonnet_pct"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
         SESSION_RESET=$(echo "$CACHE" | grep -o '"session_reset"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:.*"\([^"]*\)"/\1/')
         FETCH_TIME=$(echo "$CACHE" | grep -o '"fetch_time"[[:space:]]*:[[:space:]]*[0-9]*' | grep -oE '[0-9]+$')
     fi
@@ -133,7 +131,20 @@ USAGE_OUT=""
 if [ -n "$SESSION_PCT" ]; then
     S_COLOR=$(usage_color "$SESSION_PCT")
     W_COLOR=$(usage_color "$WEEKLY_PCT")
-    SON_COLOR=$(usage_color "$SONNET_PCT")
+
+    # Round :59 times up (e.g. 3:59pm -> 4pm)
+    RESET_DISPLAY="$SESSION_RESET"
+    if echo "$SESSION_RESET" | grep -q ':59'; then
+        R_HOUR=$(echo "$SESSION_RESET" | grep -oE '^[0-9]+')
+        R_SUFFIX=$(echo "$SESSION_RESET" | grep -oE '[ap]m$')
+        R_HOUR=$((R_HOUR + 1))
+        if [ "$R_HOUR" -eq 13 ]; then
+            R_HOUR=1
+        elif [ "$R_HOUR" -eq 12 ]; then
+            [ "$R_SUFFIX" = "am" ] && R_SUFFIX="pm" || R_SUFFIX="am"
+        fi
+        RESET_DISPLAY="${R_HOUR}${R_SUFFIX}"
+    fi
 
     # If data is stale, wrap in dim to signal it's old
     STALE_PRE=""
@@ -143,14 +154,15 @@ if [ -n "$SESSION_PCT" ]; then
         STALE_POST="${RESET}"
     fi
 
-    USAGE_OUT=" ${STALE_PRE}${S_COLOR}session: ${SESSION_PCT}%${RESET}"
-    [ -n "$SESSION_RESET" ] && [ "$SESSION_RESET" != "unknown" ] && USAGE_OUT+=" ${DIM}(resets ${SESSION_RESET})${RESET}"
-    USAGE_OUT+=" ${STALE_PRE}${W_COLOR}week: ${WEEKLY_PCT}%${RESET} ${STALE_PRE}${SON_COLOR}sonnet: ${SONNET_PCT}%${RESET}${STALE_POST}"
+    USAGE_OUT=" ${STALE_PRE}[${S_COLOR}sesh: ${SESSION_PCT}%${RESET}"
+    [ -n "$RESET_DISPLAY" ] && [ "$RESET_DISPLAY" != "unknown" ] && USAGE_OUT+=" ${DIM}(ends ${RESET_DISPLAY})${RESET}"
+    USAGE_OUT+=" ${STALE_PRE}${W_COLOR}week: ${WEEKLY_PCT}%${RESET}"
 
     # Cache age indicator
     if [ -n "$CACHE_AGE" ]; then
-        USAGE_OUT+=" ${DIM}${CACHE_AGE} ago${RESET}"
+        USAGE_OUT+=" ${DIM}- ${CACHE_AGE} ago${RESET}"
     fi
+    USAGE_OUT+="]${STALE_POST}"
 fi
 
 echo -e "${DIR_OUT}${GIT_BRANCH} ${USER_HOST} ${MODEL_OUT} ${CTX_OUT}${USAGE_OUT}"
