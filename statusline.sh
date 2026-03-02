@@ -44,7 +44,7 @@ if [ $((MIN % 5)) -eq 0 ]; then
     LOCK_MIN=$(cat "$USAGE_LOCK" 2>/dev/null)
     if [ "$LOCK_MIN" != "$MIN" ]; then
         echo "$MIN" > "$USAGE_LOCK"
-        ("$SCRIPT_DIR/get-usage.sh" > "$USAGE_CACHE" 2>/dev/null &)
+        (TMP="$USAGE_CACHE.tmp" && "$SCRIPT_DIR/get-usage.sh" > "$TMP" 2>/dev/null && mv "$TMP" "$USAGE_CACHE" || rm -f "$TMP" &)
     fi
 fi
 
@@ -155,12 +155,12 @@ if [ -n "$SESSION_PCT" ]; then
     fi
 
     USAGE_OUT=" ${STALE_PRE}[${S_COLOR}sesh: ${SESSION_PCT}%${RESET}"
-    [ -n "$RESET_DISPLAY" ] && [ "$RESET_DISPLAY" != "unknown" ] && USAGE_OUT+=" ${DIM}(ends ${RESET_DISPLAY})${RESET}"
+    [ -n "$RESET_DISPLAY" ] && [ "$RESET_DISPLAY" != "unknown" ] && USAGE_OUT+=" ${DIM}(↺ ${RESET_DISPLAY})${RESET}"
     USAGE_OUT+=" ${STALE_PRE}${W_COLOR}week: ${WEEKLY_PCT}%${RESET}"
 
-    # Cache age indicator
+    # Cache age indicator — extra dim so it doesn't compete with the stats
     if [ -n "$CACHE_AGE" ]; then
-        USAGE_OUT+=" ${DIM}- ${CACHE_AGE} ago${RESET}"
+        USAGE_OUT+=" \033[2;90m| ${CACHE_AGE} ago${RESET}"
     fi
     USAGE_OUT+="]${STALE_POST}"
 fi

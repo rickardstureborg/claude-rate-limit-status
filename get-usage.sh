@@ -10,7 +10,7 @@ USAGE_CACHE="/tmp/claude-usage-cache.json"
 TRACKING_FILE="$HOME/.claude/usage-tracking.jsonl"
 
 # Run expect script
-timeout 35 expect "$EXPECT_SCRIPT" >/dev/null 2>&1
+expect "$EXPECT_SCRIPT" >/dev/null 2>&1
 EXPECT_EXIT=$?
 
 if [ ! -f "$LOG_FILE" ]; then
@@ -45,7 +45,7 @@ SESSION_PCT=$(echo "$SESSION_BLOCK" | grep -oE '[0-9]+%[[:space:]]*used' | head 
 
 # Session reset time: "Resets 2pm" or "Resets 1:59pm" or "Rese s 2pm" (garbled)
 SESSION_RESET=$(echo "$SESSION_BLOCK" | grep -oE 'Rese[t ]*s[[:space:]]*[0-9:]+[ap]m' | head -1 | sed 's/Rese[t ]*s[[:space:]]*//')
-[ -z "$SESSION_RESET" ] && SESSION_RESET=$(echo "$SESSION_BLOCK" | grep -oE '[0-9]{1,2}(:[0-9]{2})?[ap]m[[:space:]]*([(]America' | head -1 | grep -oE '[0-9:]+[ap]m')
+[ -z "$SESSION_RESET" ] && SESSION_RESET=$(echo "$SESSION_BLOCK" | grep -oE '[0-9]{1,2}(:[0-9]{2})?[ap]m[[:space:]]*\(America' | head -1 | grep -oE '[0-9:]+[ap]m')
 
 # --- Parse weekly (all models) usage ---
 WEEKLY_BLOCK=$(echo "$CLEAN" | grep -A3 "all models")

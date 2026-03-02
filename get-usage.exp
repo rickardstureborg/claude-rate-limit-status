@@ -6,6 +6,9 @@ log_file -noappend /tmp/claude-usage-log.txt
 log_user 1
 set timeout 25
 
+# Clear env var so nested claude doesn't refuse to start
+catch {unset env(CLAUDECODE)}
+
 spawn claude
 
 # Wait for the welcome screen to fully render — look for the context % indicator
